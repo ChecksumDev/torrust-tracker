@@ -1,54 +1,57 @@
+use crate::key_manager::AuthKey;
+use crate::torrust_http_tracker::{
+    AnnounceRequest, AnnounceRequestQuery, ScrapeRequest, ServerError, WebResult,
+};
+use crate::{InfoHash, PeerId, TorrentTracker, MAX_SCRAPE_TORRENTS};
+use log::debug;
 use std::convert::Infallible;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 use std::sync::Arc;
-use log::debug;
-use warp::{Filter, reject, Rejection};
-use crate::{InfoHash, MAX_SCRAPE_TORRENTS, PeerId, TorrentTracker};
-use crate::key_manager::AuthKey;
-use crate::torrust_http_tracker::{AnnounceRequest, AnnounceRequestQuery, ScrapeRequest, ServerError, WebResult};
+use warp::{reject, Filter, Rejection};
 
 /// Pass Arc<TorrentTracker> along
-pub fn with_tracker(tracker: Arc<TorrentTracker>) -> impl Filter<Extract = (Arc<TorrentTracker>,), Error = Infallible> + Clone {
-    warp::any()
-        .map(move || tracker.clone())
+pub fn with_tracker(
+    tracker: Arc<TorrentTracker>,
+) -> impl Filter<Extract = (Arc<TorrentTracker>,), Error = Infallible> + Clone {
+    warp::any().map(move || tracker.clone())
 }
 
 /// Check for infoHash
 pub fn with_info_hash() -> impl Filter<Extract = (Vec<InfoHash>,), Error = Rejection> + Clone {
-    warp::filters::query::raw()
-        .and_then(info_hashes)
+    warp::filters::query::raw().and_then(info_hashes)
 }
 
 /// Check for PeerId
 pub fn with_peer_id() -> impl Filter<Extract = (PeerId,), Error = Rejection> + Clone {
-    warp::filters::query::raw()
-        .and_then(peer_id)
+    warp::filters::query::raw().and_then(peer_id)
 }
 
 /// Pass Arc<TorrentTracker> along
 pub fn with_auth_key() -> impl Filter<Extract = (Option<AuthKey>,), Error = Infallible> + Clone {
     warp::path::param::<String>()
-        .map(|key: String| {
-            AuthKey::from_string(&key)
-        })
-        .or_else(|_| async {
-            Ok::<(Option<AuthKey>,), Infallible>((None,))
-        })
+        .map(|key: String| AuthKey::from_string(&key))
+        .or_else(|_| async { Ok::<(Option<AuthKey>,), Infallible>((None,)) })
 }
 
 /// Check for PeerAddress
-pub fn with_peer_addr(on_reverse_proxy: bool) -> impl Filter<Extract = (IpAddr,), Error = Rejection> + Clone {
+pub fn with_peer_addr(
+    on_reverse_proxy: bool,
+) -> impl Filter<Extract = (IpAddr,), Error = Rejection> + Clone {
     warp::addr::remote()
         .and(warp::header::optional::<String>("X-Forwarded-For"))
-        .map(move |remote_addr: Option<SocketAddr>, x_forwarded_for: Option<String>| {
-            (on_reverse_proxy, remote_addr, x_forwarded_for)
-        })
+        .map(
+            move |remote_addr: Option<SocketAddr>, x_forwarded_for: Option<String>| {
+                (on_reverse_proxy, remote_addr, x_forwarded_for)
+            },
+        )
         .and_then(peer_addr)
 }
 
 /// Check for AnnounceRequest
-pub fn with_announce_request(on_reverse_proxy: bool) -> impl Filter<Extract = (AnnounceRequest,), Error = Rejection> + Clone {
+pub fn with_announce_request(
+    on_reverse_proxy: bool,
+) -> impl Filter<Extract = (AnnounceRequest,), Error = Rejection> + Clone {
     warp::filters::query::query::<AnnounceRequestQuery>()
         .and(with_info_hash())
         .and(with_peer_id())
@@ -57,7 +60,9 @@ pub fn with_announce_request(on_reverse_proxy: bool) -> impl Filter<Extract = (A
 }
 
 /// Check for ScrapeRequest
-pub fn with_scrape_request(on_reverse_proxy: bool) -> impl Filter<Extract = (ScrapeRequest,), Error = Rejection> + Clone {
+pub fn with_scrape_request(
+    on_reverse_proxy: bool,
+) -> impl Filter<Extract = (ScrapeRequest,), Error = Rejection> + Clone {
     warp::any()
         .and(with_info_hash())
         .and(with_peer_addr(on_reverse_proxy))
@@ -66,13 +71,14 @@ pub fn with_scrape_request(on_reverse_proxy: bool) -> impl Filter<Extract = (Scr
 
 /// Parse InfoHash from raw query string
 async fn info_hashes(raw_query: String) -> WebResult<Vec<InfoHash>> {
-    let split_raw_query: Vec<&str> = raw_query.split("&").collect();
+    let split_raw_query: Vec<&str> = raw_query.split('&').collect();
     let mut info_hashes: Vec<InfoHash> = Vec::new();
 
     for v in split_raw_query {
         if v.contains("info_hash") {
-            let raw_info_hash = v.split("=").collect::<Vec<&str>>()[1];
-            let info_hash_bytes = percent_encoding::percent_decode_str(raw_info_hash).collect::<Vec<u8>>();
+            let raw_info_hash = v.split('=').collect::<Vec<&str>>()[1];
+            let info_hash_bytes =
+                percent_encoding::percent_decode_str(raw_info_hash).collect::<Vec<u8>>();
             let info_hash = InfoHash::from_str(&hex::encode(info_hash_bytes));
             if let Ok(ih) = info_hash {
                 info_hashes.push(ih);
@@ -82,7 +88,7 @@ async fn info_hashes(raw_query: String) -> WebResult<Vec<InfoHash>> {
 
     if info_hashes.len() > MAX_SCRAPE_TORRENTS as usize {
         Err(reject::custom(ServerError::ExceededInfoHashLimit))
-    } else if info_hashes.len() < 1 {
+    } else if info_hashes.is_empty() {
         Err(reject::custom(ServerError::InvalidInfoHash))
     } else {
         Ok(info_hashes)
@@ -92,7 +98,7 @@ async fn info_hashes(raw_query: String) -> WebResult<Vec<InfoHash>> {
 /// Parse PeerId from raw query string
 async fn peer_id(raw_query: String) -> WebResult<PeerId> {
     // put all query params in a vec
-    let split_raw_query: Vec<&str> = raw_query.split("&").collect();
+    let split_raw_query: Vec<&str> = raw_query.split('&').collect();
 
     let mut peer_id: Option<PeerId> = None;
 
@@ -100,10 +106,11 @@ async fn peer_id(raw_query: String) -> WebResult<PeerId> {
         // look for the peer_id param
         if v.contains("peer_id") {
             // get raw percent_encoded peer_id
-            let raw_peer_id = v.split("=").collect::<Vec<&str>>()[1];
+            let raw_peer_id = v.split('=').collect::<Vec<&str>>()[1];
 
             // decode peer_id
-            let peer_id_bytes = percent_encoding::percent_decode_str(raw_peer_id).collect::<Vec<u8>>();
+            let peer_id_bytes =
+                percent_encoding::percent_decode_str(raw_peer_id).collect::<Vec<u8>>();
 
             // peer_id must be 20 bytes
             if peer_id_bytes.len() != 20 {
@@ -127,13 +134,15 @@ async fn peer_id(raw_query: String) -> WebResult<PeerId> {
 }
 
 /// Get PeerAddress from RemoteAddress or Forwarded
-async fn peer_addr((on_reverse_proxy, remote_addr, x_forwarded_for): (bool, Option<SocketAddr>, Option<String>)) -> WebResult<IpAddr> {
+async fn peer_addr(
+    (on_reverse_proxy, remote_addr, x_forwarded_for): (bool, Option<SocketAddr>, Option<String>),
+) -> WebResult<IpAddr> {
     if !on_reverse_proxy && remote_addr.is_none() {
-        return Err(reject::custom(ServerError::AddressNotFound))
+        return Err(reject::custom(ServerError::AddressNotFound));
     }
 
     if on_reverse_proxy && x_forwarded_for.is_none() {
-        return Err(reject::custom(ServerError::AddressNotFound))
+        return Err(reject::custom(ServerError::AddressNotFound));
     }
 
     match on_reverse_proxy {
@@ -146,17 +155,22 @@ async fn peer_addr((on_reverse_proxy, remote_addr, x_forwarded_for): (bool, Opti
             // set client ip to last forwarded ip
             let x_forwarded_ip = *x_forwarded_ips.last().unwrap();
 
-            IpAddr::from_str(x_forwarded_ip).or_else(|e| {
+            IpAddr::from_str(x_forwarded_ip).map_err(|e| {
                 debug!("{}", e);
-                Err(reject::custom(ServerError::AddressNotFound))
+                reject::custom(ServerError::AddressNotFound)
             })
-        },
-        false => Ok(remote_addr.unwrap().ip())
+        }
+        false => Ok(remote_addr.unwrap().ip()),
     }
 }
 
 /// Parse AnnounceRequest from raw AnnounceRequestQuery, InfoHash and Option<SocketAddr>
-async fn announce_request(announce_request_query: AnnounceRequestQuery, info_hashes: Vec<InfoHash>, peer_id: PeerId, peer_addr: IpAddr) -> WebResult<AnnounceRequest> {
+async fn announce_request(
+    announce_request_query: AnnounceRequestQuery,
+    info_hashes: Vec<InfoHash>,
+    peer_id: PeerId,
+    peer_addr: IpAddr,
+) -> WebResult<AnnounceRequest> {
     Ok(AnnounceRequest {
         info_hash: info_hashes[0],
         peer_addr,
@@ -166,7 +180,7 @@ async fn announce_request(announce_request_query: AnnounceRequestQuery, info_has
         port: announce_request_query.port,
         left: announce_request_query.left.unwrap_or(0),
         event: announce_request_query.event,
-        compact: announce_request_query.compact
+        compact: announce_request_query.compact,
     })
 }
 

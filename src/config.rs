@@ -1,18 +1,18 @@
 pub use crate::tracker::TrackerMode;
-use serde::{Serialize, Deserialize, Serializer};
+use config::{Config, ConfigError, File};
+use serde::{Deserialize, Serialize, Serializer};
 use std;
 use std::collections::HashMap;
 use std::fs;
-use toml;
-use std::net::{IpAddr};
+use std::net::IpAddr;
 use std::path::Path;
 use std::str::FromStr;
-use config::{ConfigError, Config, File};
+use toml;
 
 #[derive(Serialize, Deserialize, PartialEq)]
 pub enum TrackerServer {
     UDP,
-    HTTP
+    HTTP,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -30,7 +30,7 @@ pub struct HttpTrackerConfig {
     #[serde(serialize_with = "none_as_empty_string")]
     pub ssl_cert_path: Option<String>,
     #[serde(serialize_with = "none_as_empty_string")]
-    pub ssl_key_path: Option<String>
+    pub ssl_key_path: Option<String>,
 }
 
 impl HttpTrackerConfig {
@@ -76,7 +76,7 @@ impl std::fmt::Display for ConfigurationError {
         match self {
             ConfigurationError::IOError(e) => e.fmt(f),
             ConfigurationError::ParseError(e) => e.fmt(f),
-            _ => write!(f, "{:?}", self)
+            _ => write!(f, "{:?}", self),
         }
     }
 }
@@ -84,9 +84,9 @@ impl std::fmt::Display for ConfigurationError {
 impl std::error::Error for ConfigurationError {}
 
 pub fn none_as_empty_string<T, S>(option: &Option<T>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        T: Serialize,
-        S: Serializer,
+where
+    T: Serialize,
+    S: Serializer,
 {
     if let Some(value) = option {
         value.serialize(serializer)
@@ -103,26 +103,20 @@ impl Configuration {
     pub fn load_file(path: &str) -> Result<Configuration, ConfigurationError> {
         match std::fs::read(path) {
             Err(e) => Err(ConfigurationError::IOError(e)),
-            Ok(data) => {
-                match Self::load(data.as_slice()) {
-                    Ok(cfg) => {
-                        Ok(cfg)
-                    },
-                    Err(e) => Err(ConfigurationError::ParseError(e)),
-                }
-            }
+            Ok(data) => match Self::load(data.as_slice()) {
+                Ok(cfg) => Ok(cfg),
+                Err(e) => Err(ConfigurationError::ParseError(e)),
+            },
         }
     }
 
     pub fn get_ext_ip(&self) -> Option<IpAddr> {
         match &self.external_ip {
             None => None,
-            Some(external_ip) => {
-                match IpAddr::from_str(external_ip) {
-                    Ok(external_ip) => Some(external_ip),
-                    Err(_) => None
-                }
-            }
+            Some(external_ip) => match IpAddr::from_str(external_ip) {
+                Ok(external_ip) => Some(external_ip),
+                Err(_) => None,
+            },
         }
     }
 }
@@ -146,32 +140,35 @@ impl Configuration {
             http_api: HttpApiConfig {
                 enabled: true,
                 bind_address: String::from("127.0.0.1:1212"),
-                access_tokens: [(String::from("admin"), String::from("MyAccessToken"))].iter().cloned().collect(),
-            }
+                access_tokens: [(String::from("admin"), String::from("MyAccessToken"))]
+                    .iter()
+                    .cloned()
+                    .collect(),
+            },
         };
-        configuration.udp_trackers.push(
-            UdpTrackerConfig{
-                enabled: false,
-                bind_address: String::from("0.0.0.0:6969")
-            }
-        );
-        configuration.http_trackers.push(
-            HttpTrackerConfig{
-                enabled: false,
-                bind_address: String::from("0.0.0.0:6969"),
-                ssl_enabled: false,
-                ssl_bind_address: String::from("0.0.0.0:6868"),
-                ssl_cert_path: None,
-                ssl_key_path: None
-            }
-        );
+        configuration.udp_trackers.push(UdpTrackerConfig {
+            enabled: false,
+            bind_address: String::from("0.0.0.0:6969"),
+        });
+        configuration.http_trackers.push(HttpTrackerConfig {
+            enabled: false,
+            bind_address: String::from("0.0.0.0:6969"),
+            ssl_enabled: false,
+            ssl_bind_address: String::from("0.0.0.0:6868"),
+            ssl_cert_path: None,
+            ssl_key_path: None,
+        });
         configuration
     }
 
     pub fn verify(&self) -> Result<(), ConfigurationError> {
         // UDP is not secure for sending private keys
-        if self.mode == TrackerMode::PrivateMode || self.mode == TrackerMode::PrivateListedMode {
-            return Err(ConfigurationError::TrackerModeIncompatible)
+        if self.mode == TrackerMode::PrivateMode {
+            for udp_tracker in &self.udp_trackers {
+                if udp_tracker.enabled {
+                    return Err(ConfigurationError::TrackerModeIncompatible);
+                }
+            }
         }
 
         Ok(())
@@ -179,30 +176,11 @@ impl Configuration {
 
     pub fn load_from_file() -> Result<Configuration, ConfigError> {
         let mut config = Config::new();
-
         const CONFIG_PATH: &str = "config.toml";
 
-        if Path::new(CONFIG_PATH).exists() {
-            config.merge(File::with_name(CONFIG_PATH))?;
-        } else {
-            eprintln!("No config file found.");
-            eprintln!("Creating config file..");
-            let config = Configuration::default();
-            let _ = config.save_to_file();
-            return Err(ConfigError::Message(format!("Please edit the config.TOML in the root folder and restart the tracker.")))
-        }
-
-        let torrust_config: Configuration = config.try_into().map_err(|e| ConfigError::Message(format!("Errors while processing config: {}.", e)))?;
-
-        match torrust_config.verify() {
-            Ok(_) => Ok(torrust_config),
-            Err(e) => Err(ConfigError::Message(format!("Errors while processing config: {}.", e)))
-        }
-    }
-
-    pub fn save_to_file(&self) -> Result<(), ()>{
-        let toml_string = toml::to_string(self).expect("Could not encode TOML value");
-        fs::write("config.toml", toml_string).expect("Could not write to file!");
-        Ok(())
+        config.merge(File::with_name(CONFIG_PATH))?;
+        let config = config.try_into::<Configuration>()?;
+        config.verify().unwrap();
+        Ok(config)
     }
 }

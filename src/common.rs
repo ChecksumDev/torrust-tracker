@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use aquatic_udp_protocol::{AnnounceEvent, NumberOfBytes};
+use serde::{Deserialize, Serialize};
 
 pub const MAX_SCRAPE_TORRENTS: u8 = 74;
 pub const AUTH_KEY_LENGTH: usize = 32;
@@ -19,7 +19,7 @@ pub enum AnnounceEventDef {
     Started,
     Stopped,
     Completed,
-    None
+    None,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -49,7 +49,7 @@ impl std::str::FromStr for InfoHash {
     type Err = binascii::ConvertError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut i = Self { 0: [0u8; 20] };
+        let mut i = Self([0u8; 20]);
         if s.len() != 40 {
             return Err(binascii::ConvertError::InvalidInputLength);
         }
@@ -67,15 +67,15 @@ impl std::cmp::PartialOrd<InfoHash> for InfoHash {
 impl std::convert::From<&[u8]> for InfoHash {
     fn from(data: &[u8]) -> InfoHash {
         assert_eq!(data.len(), 20);
-        let mut ret = InfoHash { 0: [0u8; 20] };
+        let mut ret = InfoHash([0u8; 20]);
         ret.0.clone_from_slice(data);
-        return ret;
+        ret
     }
 }
 
 impl std::convert::Into<InfoHash> for [u8; 20] {
     fn into(self) -> InfoHash {
-        InfoHash { 0: self }
+        InfoHash(self)
     }
 }
 
@@ -111,15 +111,15 @@ impl<'v> serde::de::Visitor<'v> for InfoHashVisitor {
             ));
         }
 
-        let mut res = InfoHash { 0: [0u8; 20] };
+        let mut res = InfoHash([0u8; 20]);
 
-        if let Err(_) = binascii::hex2bin(v.as_bytes(), &mut res.0) {
+        if binascii::hex2bin(v.as_bytes(), &mut res.0).is_err() {
             return Err(serde::de::Error::invalid_value(
                 serde::de::Unexpected::Str(v),
                 &"expected a hexadecimal string",
             ));
         } else {
-            return Ok(res);
+            Ok(res)
         }
     }
 }
@@ -135,7 +135,7 @@ impl PeerId {
             String::from(std::str::from_utf8(bytes_out).unwrap())
         } else {
             "".to_string()
-        }
+        };
     }
 }
 
@@ -220,8 +220,9 @@ impl PeerId {
 }
 impl Serialize for PeerId {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer, {
+    where
+        S: serde::Serializer,
+    {
         let buff_size = self.0.len() * 2;
         let mut tmp: Vec<u8> = vec![0; buff_size];
         binascii::bin2hex(&self.0, &mut tmp).unwrap();

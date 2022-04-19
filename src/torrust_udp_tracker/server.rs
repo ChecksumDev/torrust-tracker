@@ -1,11 +1,11 @@
-use std::io::Cursor;
-use std::net::{SocketAddr};
-use std::sync::Arc;
-use aquatic_udp_protocol::{Response};
-use log::{debug, info};
-use tokio::net::UdpSocket;
-use crate::{TorrentTracker};
 use crate::torrust_udp_tracker::{handle_packet, MAX_PACKET_SIZE};
+use crate::TorrentTracker;
+use aquatic_udp_protocol::Response;
+use log::{debug, info};
+use std::io::Cursor;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::net::UdpSocket;
 
 pub struct UdpServer {
     socket: Arc<UdpSocket>,
@@ -13,7 +13,10 @@ pub struct UdpServer {
 }
 
 impl UdpServer {
-    pub async fn new(tracker: Arc<TorrentTracker>, bind_address: &str) -> tokio::io::Result<UdpServer> {
+    pub async fn new(
+        tracker: Arc<TorrentTracker>,
+        bind_address: &str,
+    ) -> tokio::io::Result<UdpServer> {
         let socket = UdpSocket::bind(bind_address).await?;
 
         Ok(UdpServer {
@@ -61,7 +64,9 @@ impl UdpServer {
                 debug!("{:?}", &inner[..position]);
                 UdpServer::send_packet(socket, &remote_addr, &inner[..position]).await;
             }
-            Err(_) => { debug!("could not write response to bytes."); }
+            Err(_) => {
+                debug!("could not write response to bytes.");
+            }
         }
     }
 

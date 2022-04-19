@@ -1,21 +1,24 @@
-use std::net::SocketAddr;
-use std::time::SystemTime;
+use aquatic_udp_protocol::ConnectionId;
+use byteorder::{BigEndian, ReadBytesExt};
 use std::error::Error;
 use std::fmt::Write;
 use std::io::Cursor;
-use aquatic_udp_protocol::ConnectionId;
-use byteorder::{BigEndian, ReadBytesExt};
+use std::net::SocketAddr;
+use std::time::SystemTime;
 
 pub fn get_connection_id(remote_address: &SocketAddr) -> ConnectionId {
     match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
-        Ok(duration) => ConnectionId(((duration.as_secs() / 3600) | ((remote_address.port() as u64) << 36)) as i64),
+        Ok(duration) => ConnectionId(
+            ((duration.as_secs() / 3600) | ((remote_address.port() as u64) << 36)) as i64,
+        ),
         Err(_) => ConnectionId(0x7FFFFFFFFFFFFFFF),
     }
 }
 
 pub fn current_time() -> u64 {
     SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH).unwrap()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
         .as_secs()
 }
 
@@ -49,10 +52,12 @@ pub async fn convert_int_to_bytes(number: &u64) -> Vec<u8> {
 pub async fn convert_bytes_to_int(array: &Vec<u8>) -> u64 {
     let mut array_fixed: Vec<u8> = Vec::new();
     let size = 8 - array.len();
+
     for _ in 0..size {
         array_fixed.push(0);
     }
     array_fixed.extend(array);
+
     let mut rdr = Cursor::new(array_fixed);
     return rdr.read_u64::<BigEndian>().unwrap();
 }

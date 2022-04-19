@@ -1,11 +1,11 @@
-use crate::tracker::{TorrentTracker};
+use super::common::*;
+use crate::tracker::TorrentTracker;
+use crate::TorrentPeer;
 use serde::{Deserialize, Serialize};
 use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use warp::{filters, reply, reply::Reply, serve, Filter, Server};
-use crate::TorrentPeer;
-use super::common::*;
 
 #[derive(Deserialize, Debug)]
 struct TorrentInfoQuery {
@@ -52,7 +52,9 @@ enum ActionStatus<'a> {
 
 impl warp::reject::Reject for ActionStatus<'static> {}
 
-fn authenticate(tokens: HashMap<String, String>) -> impl Filter<Extract = (), Error = warp::reject::Rejection> + Clone {
+fn authenticate(
+    tokens: HashMap<String, String>,
+) -> impl Filter<Extract = (), Error = warp::reject::Rejection> + Clone {
     #[derive(Deserialize)]
     struct AuthToken {
         token: Option<String>,
@@ -64,24 +66,30 @@ fn authenticate(tokens: HashMap<String, String>) -> impl Filter<Extract = (), Er
     warp::filters::any::any()
         .map(move || tokens.clone())
         .and(filters::query::query::<AuthToken>())
-        .and_then(|tokens: Arc<HashSet<String>>, token: AuthToken| {
-            async move {
+        .and_then(
+            |tokens: Arc<HashSet<String>>, token: AuthToken| async move {
                 match token.token {
                     Some(token) => {
                         if !tokens.contains(&token) {
-                            return Err(warp::reject::custom(ActionStatus::Err { reason: "token not valid".into() }))
+                            return Err(warp::reject::custom(ActionStatus::Err {
+                                reason: "token not valid".into(),
+                            }));
                         }
 
                         Ok(())
                     }
-                    None => Err(warp::reject::custom(ActionStatus::Err { reason: "unauthorized".into() }))
+                    None => Err(warp::reject::custom(ActionStatus::Err {
+                        reason: "unauthorized".into(),
+                    })),
                 }
-            }
-        })
+            },
+        )
         .untuple_one()
 }
 
-pub fn build_server(tracker: Arc<TorrentTracker>) -> Server<impl Filter<Extract = impl Reply> + Clone + Send + Sync + 'static> {
+pub fn build_server(
+    tracker: Arc<TorrentTracker>,
+) -> Server<impl Filter<Extract = impl Reply> + Clone + Send + Sync + 'static> {
     // GET /api/torrents?offset=:u32&limit=:u32
     // View torrent list
     let api_torrents = tracker.clone();
@@ -93,8 +101,8 @@ pub fn build_server(tracker: Arc<TorrentTracker>) -> Server<impl Filter<Extract 
             let tracker = api_torrents.clone();
             (limits, tracker)
         })
-        .and_then(|(limits, tracker): (TorrentInfoQuery, Arc<TorrentTracker>)| {
-            async move {
+        .and_then(
+            |(limits, tracker): (TorrentInfoQuery, Arc<TorrentTracker>)| async move {
                 let offset = limits.offset.unwrap_or(0);
                 let limit = min(limits.limit.unwrap_or(1000), 4000);
 
@@ -116,8 +124,8 @@ pub fn build_server(tracker: Arc<TorrentTracker>) -> Server<impl Filter<Extract 
                     .collect();
 
                 Result::<_, warp::reject::Rejection>::Ok(reply::json(&results))
-            }
-        });
+            },
+        );
 
     // GET /api/stats
     // View tracker status
@@ -129,53 +137,51 @@ pub fn build_server(tracker: Arc<TorrentTracker>) -> Server<impl Filter<Extract 
             let tracker = api_stats.clone();
             tracker
         })
-        .and_then(|tracker: Arc<TorrentTracker>| {
-            async move {
-                let mut results = Stats{
-                    torrents: 0,
-                    seeders: 0,
-                    completed: 0,
-                    leechers: 0,
-                    tcp4_connections_handled: 0,
-                    tcp4_announces_handled: 0,
-                    tcp4_scrapes_handled: 0,
-                    tcp6_connections_handled: 0,
-                    tcp6_announces_handled: 0,
-                    tcp6_scrapes_handled: 0,
-                    udp4_connections_handled: 0,
-                    udp4_announces_handled: 0,
-                    udp4_scrapes_handled: 0,
-                    udp6_connections_handled: 0,
-                    udp6_announces_handled: 0,
-                    udp6_scrapes_handled: 0
-                };
-                let db = tracker.get_torrents().await;
-                let _: Vec<_> = db
-                    .iter()
-                    .map(|(_info_hash, torrent_entry)| {
-                        let (seeders, completed, leechers) = torrent_entry.get_stats();
-                        results.seeders += seeders;
-                        results.completed += completed;
-                        results.leechers += leechers;
-                        results.torrents += 1;
-                    })
-                    .collect();
-                let stats = tracker.get_stats().await;
-                results.tcp4_connections_handled = stats.tcp4_connections_handled as u32;
-                results.tcp4_announces_handled = stats.tcp4_announces_handled as u32;
-                results.tcp4_scrapes_handled = stats.tcp4_scrapes_handled as u32;
-                results.tcp6_connections_handled = stats.tcp6_connections_handled as u32;
-                results.tcp6_announces_handled = stats.tcp6_announces_handled as u32;
-                results.tcp6_scrapes_handled = stats.tcp6_scrapes_handled as u32;
-                results.udp4_connections_handled = stats.udp4_connections_handled as u32;
-                results.udp4_announces_handled = stats.udp4_announces_handled as u32;
-                results.udp4_scrapes_handled = stats.udp4_scrapes_handled as u32;
-                results.udp6_connections_handled = stats.udp6_connections_handled as u32;
-                results.udp6_announces_handled = stats.udp6_announces_handled as u32;
-                results.udp6_scrapes_handled = stats.udp6_scrapes_handled as u32;
+        .and_then(|tracker: Arc<TorrentTracker>| async move {
+            let mut results = Stats {
+                torrents: 0,
+                seeders: 0,
+                completed: 0,
+                leechers: 0,
+                tcp4_connections_handled: 0,
+                tcp4_announces_handled: 0,
+                tcp4_scrapes_handled: 0,
+                tcp6_connections_handled: 0,
+                tcp6_announces_handled: 0,
+                tcp6_scrapes_handled: 0,
+                udp4_connections_handled: 0,
+                udp4_announces_handled: 0,
+                udp4_scrapes_handled: 0,
+                udp6_connections_handled: 0,
+                udp6_announces_handled: 0,
+                udp6_scrapes_handled: 0,
+            };
+            let db = tracker.get_torrents().await;
+            let _: Vec<_> = db
+                .iter()
+                .map(|(_info_hash, torrent_entry)| {
+                    let (seeders, completed, leechers) = torrent_entry.get_stats();
+                    results.seeders += seeders;
+                    results.completed += completed;
+                    results.leechers += leechers;
+                    results.torrents += 1;
+                })
+                .collect();
+            let stats = tracker.get_stats().await;
+            results.tcp4_connections_handled = stats.tcp4_connections_handled as u32;
+            results.tcp4_announces_handled = stats.tcp4_announces_handled as u32;
+            results.tcp4_scrapes_handled = stats.tcp4_scrapes_handled as u32;
+            results.tcp6_connections_handled = stats.tcp6_connections_handled as u32;
+            results.tcp6_announces_handled = stats.tcp6_announces_handled as u32;
+            results.tcp6_scrapes_handled = stats.tcp6_scrapes_handled as u32;
+            results.udp4_connections_handled = stats.udp4_connections_handled as u32;
+            results.udp4_announces_handled = stats.udp4_announces_handled as u32;
+            results.udp4_scrapes_handled = stats.udp4_scrapes_handled as u32;
+            results.udp6_connections_handled = stats.udp6_connections_handled as u32;
+            results.udp6_announces_handled = stats.udp6_announces_handled as u32;
+            results.udp6_scrapes_handled = stats.udp6_scrapes_handled as u32;
 
-                Result::<_, warp::reject::Rejection>::Ok(reply::json(&results))
-            }
+            Result::<_, warp::reject::Rejection>::Ok(reply::json(&results))
         });
 
     // GET /api/torrent/:info_hash
@@ -189,13 +195,15 @@ pub fn build_server(tracker: Arc<TorrentTracker>) -> Server<impl Filter<Extract 
             let tracker = t2.clone();
             (info_hash, tracker)
         })
-        .and_then(|(info_hash, tracker): (InfoHash, Arc<TorrentTracker>)| {
-            async move {
+        .and_then(
+            |(info_hash, tracker): (InfoHash, Arc<TorrentTracker>)| async move {
                 let db = tracker.get_torrents().await;
                 let torrent_entry_option = db.get(&info_hash);
 
                 if torrent_entry_option.is_none() {
-                    return Err(warp::reject::custom(ActionStatus::Err { reason: "torrent does not exist".into() }))
+                    return Err(warp::reject::custom(ActionStatus::Err {
+                        reason: "torrent does not exist".into(),
+                    }));
                 }
 
                 let torrent_entry = torrent_entry_option.unwrap();
@@ -210,8 +218,8 @@ pub fn build_server(tracker: Arc<TorrentTracker>) -> Server<impl Filter<Extract 
                     leechers,
                     peers: Some(peers),
                 }))
-            }
-        });
+            },
+        );
 
     // DELETE /api/whitelist/:info_hash
     // Delete info hash from whitelist
@@ -224,14 +232,16 @@ pub fn build_server(tracker: Arc<TorrentTracker>) -> Server<impl Filter<Extract 
             let tracker = t3.clone();
             (info_hash, tracker)
         })
-        .and_then(|(info_hash, tracker): (InfoHash, Arc<TorrentTracker>)| {
-            async move {
-                 match tracker.remove_torrent_from_whitelist(&info_hash).await {
-                     Ok(_) => Ok(warp::reply::json(&ActionStatus::Ok)),
-                     Err(_) => Err(warp::reject::custom(ActionStatus::Err { reason: "failed to remove torrent from whitelist".into() }))
-                 }
-            }
-        });
+        .and_then(
+            |(info_hash, tracker): (InfoHash, Arc<TorrentTracker>)| async move {
+                match tracker.remove_torrent_from_whitelist(&info_hash).await {
+                    Ok(_) => Ok(warp::reply::json(&ActionStatus::Ok)),
+                    Err(_) => Err(warp::reject::custom(ActionStatus::Err {
+                        reason: "failed to remove torrent from whitelist".into(),
+                    })),
+                }
+            },
+        );
 
     // POST /api/whitelist/:info_hash
     // Add info hash to whitelist
@@ -244,14 +254,16 @@ pub fn build_server(tracker: Arc<TorrentTracker>) -> Server<impl Filter<Extract 
             let tracker = t4.clone();
             (info_hash, tracker)
         })
-        .and_then(|(info_hash, tracker): (InfoHash, Arc<TorrentTracker>)| {
-            async move {
+        .and_then(
+            |(info_hash, tracker): (InfoHash, Arc<TorrentTracker>)| async move {
                 match tracker.add_torrent_to_whitelist(&info_hash).await {
                     Ok(..) => Ok(warp::reply::json(&ActionStatus::Ok)),
-                    Err(..) => Err(warp::reject::custom(ActionStatus::Err { reason: "failed to whitelist torrent".into() }))
+                    Err(..) => Err(warp::reject::custom(ActionStatus::Err {
+                        reason: "failed to whitelist torrent".into(),
+                    })),
                 }
-            }
-        });
+            },
+        );
 
     // POST /api/key/:seconds_valid
     // Generate new key
@@ -264,14 +276,16 @@ pub fn build_server(tracker: Arc<TorrentTracker>) -> Server<impl Filter<Extract 
             let tracker = t5.clone();
             (seconds_valid, tracker)
         })
-        .and_then(|(seconds_valid, tracker): (u64, Arc<TorrentTracker>)| {
-            async move {
+        .and_then(
+            |(seconds_valid, tracker): (u64, Arc<TorrentTracker>)| async move {
                 match tracker.generate_auth_key(seconds_valid).await {
                     Ok(auth_key) => Ok(warp::reply::json(&auth_key)),
-                    Err(..) => Err(warp::reject::custom(ActionStatus::Err { reason: "failed to generate key".into() }))
+                    Err(..) => Err(warp::reject::custom(ActionStatus::Err {
+                        reason: "failed to generate key".into(),
+                    })),
                 }
-            }
-        });
+            },
+        );
 
     // DELETE /api/key/:key
     // Delete key
@@ -284,25 +298,24 @@ pub fn build_server(tracker: Arc<TorrentTracker>) -> Server<impl Filter<Extract 
             let tracker = t6.clone();
             (key, tracker)
         })
-        .and_then(|(key, tracker): (String, Arc<TorrentTracker>)| {
-            async move {
-                match tracker.remove_auth_key(key).await {
-                    Ok(_) => Ok(warp::reply::json(&ActionStatus::Ok)),
-                    Err(_) => Err(warp::reject::custom(ActionStatus::Err { reason: "failed to delete key".into() }))
-                }
+        .and_then(|(key, tracker): (String, Arc<TorrentTracker>)| async move {
+            match tracker.remove_auth_key(key).await {
+                Ok(_) => Ok(warp::reply::json(&ActionStatus::Ok)),
+                Err(_) => Err(warp::reject::custom(ActionStatus::Err {
+                    reason: "failed to delete key".into(),
+                })),
             }
         });
 
-    let api_routes =
-        filters::path::path("api")
-            .and(view_torrent_list
-                .or(delete_torrent)
-                .or(view_torrent_info)
-                .or(view_stats_list)
-                .or(add_torrent)
-                .or(create_key)
-                .or(delete_key)
-            );
+    let api_routes = filters::path::path("api").and(
+        view_torrent_list
+            .or(delete_torrent)
+            .or(view_torrent_info)
+            .or(view_stats_list)
+            .or(add_torrent)
+            .or(create_key)
+            .or(delete_key),
+    );
 
     let server = api_routes.and(authenticate(tracker.config.http_api.access_tokens.clone()));
 

@@ -4,7 +4,7 @@ version = "2.2.0"
 license = "AGPL-3.0"
 authors = ["Mick van Dijke <mick@dutchbits.nl>"]
 description = "A feature rich BitTorrent tracker."
-edition = "2018"
+edition = "2021"
 
 [profile.release]
 lto = "fat"

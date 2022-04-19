@@ -1,8 +1,8 @@
+use serde::Serialize;
 use std::collections::HashMap;
 use std::error::Error;
 use std::io::Write;
 use std::net::IpAddr;
-use serde::{Serialize};
 
 #[derive(Serialize)]
 pub struct Peer {
@@ -18,7 +18,7 @@ pub struct AnnounceResponse {
     //pub tracker_id: String,
     pub complete: u32,
     pub incomplete: u32,
-    pub peers: Vec<Peer>
+    pub peers: Vec<Peer>,
 }
 
 impl AnnounceResponse {
@@ -45,19 +45,19 @@ impl AnnounceResponse {
 
         let mut bytes: Vec<u8> = Vec::new();
         bytes.write(b"d8:intervali")?;
-        bytes.write(&self.interval.to_string().as_bytes())?;
+        bytes.write(self.interval.to_string().as_bytes())?;
         bytes.write(b"e12:min intervali")?;
-        bytes.write(&self.interval_min.to_string().as_bytes())?;
+        bytes.write(self.interval_min.to_string().as_bytes())?;
         bytes.write(b"e8:completei")?;
-        bytes.write(&self.complete.to_string().as_bytes())?;
+        bytes.write(self.complete.to_string().as_bytes())?;
         bytes.write(b"e10:incompletei")?;
-        bytes.write(&self.incomplete.to_string().as_bytes())?;
+        bytes.write(self.incomplete.to_string().as_bytes())?;
         bytes.write(b"e5:peers")?;
-        bytes.write(&peers_v4.len().to_string().as_bytes())?;
+        bytes.write(peers_v4.len().to_string().as_bytes())?;
         bytes.write(b":")?;
         bytes.write(peers_v4.as_slice())?;
         bytes.write(b"e6:peers6")?;
-        bytes.write(&peers_v6.len().to_string().as_bytes())?;
+        bytes.write(peers_v6.len().to_string().as_bytes())?;
         bytes.write(b":")?;
         bytes.write(peers_v6.as_slice())?;
         bytes.write(b"e")?;
@@ -75,7 +75,7 @@ pub struct ScrapeResponseEntry {
 
 #[derive(Serialize)]
 pub struct ScrapeResponse {
-    pub files: HashMap<String, ScrapeResponseEntry>
+    pub files: HashMap<String, ScrapeResponseEntry>,
 }
 
 impl ScrapeResponse {
@@ -86,7 +86,7 @@ impl ScrapeResponse {
 
 #[derive(Serialize)]
 pub struct ErrorResponse {
-    pub failure_reason: String
+    pub failure_reason: String,
 }
 
 impl ErrorResponse {

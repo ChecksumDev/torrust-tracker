@@ -1,9 +1,12 @@
+use log::info;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use log::info;
 use tokio::task::JoinHandle;
-use torrust_tracker::{Configuration, http_api_server, HttpApiConfig, HttpTrackerConfig, logging, TorrentTracker, UdpServer, UdpTrackerConfig};
 use torrust_tracker::torrust_http_tracker::server::HttpServer;
+use torrust_tracker::{
+    http_api_server, logging, Configuration, HttpApiConfig, HttpTrackerConfig, TorrentTracker,
+    UdpServer, UdpTrackerConfig,
+};
 
 #[tokio::main]
 async fn main() {
@@ -16,9 +19,7 @@ async fn main() {
     };
 
     // the singleton torrent tracker that gets passed to the HTTP and UDP server
-    let tracker = Arc::new(TorrentTracker::new(config.clone()).unwrap_or_else(|e| {
-        panic!("{}", e)
-    }));
+    let tracker = Arc::new(TorrentTracker::new(config.clone()).unwrap_or_else(|e| panic!("{}", e)));
 
     logging::setup_logging(&config);
 
@@ -47,9 +48,8 @@ async fn main() {
         // used to send kill signal to thread
 
         if udp_tracker.enabled {
-            udp_server_handles.push(
-                start_udp_tracker_server(&udp_tracker, tracker.clone(), rx.clone()).await
-            )
+            udp_server_handles
+                .push(start_udp_tracker_server(&udp_tracker, tracker.clone(), rx.clone()).await)
         }
     }
 
@@ -80,7 +80,10 @@ async fn main() {
     }
 }
 
-fn start_torrent_cleanup_job(config: Arc<Configuration>, tracker: Arc<TorrentTracker>) -> Option<JoinHandle<()>> {
+fn start_torrent_cleanup_job(
+    config: Arc<Configuration>,
+    tracker: Arc<TorrentTracker>,
+) -> Option<JoinHandle<()>> {
     let weak_tracker = std::sync::Arc::downgrade(&tracker);
     let interval = config.cleanup_interval.unwrap_or(600);
 
@@ -88,7 +91,7 @@ fn start_torrent_cleanup_job(config: Arc<Configuration>, tracker: Arc<TorrentTra
         let interval = std::time::Duration::from_secs(interval);
         let mut interval = tokio::time::interval(interval);
         interval.tick().await; // first tick is immediate...
-        // periodically call tracker.cleanup_torrents()
+                               // periodically call tracker.cleanup_torrents()
         loop {
             interval.tick().await;
             if let Some(tracker) = weak_tracker.upgrade() {
@@ -110,7 +113,11 @@ fn start_api_server(config: &HttpApiConfig, tracker: Arc<TorrentTracker>) -> Joi
     })
 }
 
-fn start_http_tracker_server(config: &HttpTrackerConfig, tracker: Arc<TorrentTracker>, ssl: bool) -> JoinHandle<()> {
+fn start_http_tracker_server(
+    config: &HttpTrackerConfig,
+    tracker: Arc<TorrentTracker>,
+    ssl: bool,
+) -> JoinHandle<()> {
     let http_tracker = HttpServer::new(tracker);
     let enabled = config.enabled;
     let bind_addr = config.bind_address.parse::<SocketAddr>().unwrap();
@@ -123,7 +130,13 @@ fn start_http_tracker_server(config: &HttpTrackerConfig, tracker: Arc<TorrentTra
         // run with tls if ssl_enabled and cert and key path are set
         if ssl && ssl_enabled && ssl_cert_path.is_some() && ssl_key_path.is_some() {
             info!("Starting HTTPS server on: {} (TLS)", ssl_bind_addr);
-            http_tracker.start_tls(ssl_bind_addr, ssl_cert_path.as_ref().unwrap(), ssl_key_path.as_ref().unwrap()).await;
+            http_tracker
+                .start_tls(
+                    ssl_bind_addr,
+                    ssl_cert_path.as_ref().unwrap(),
+                    ssl_key_path.as_ref().unwrap(),
+                )
+                .await;
         }
         if !ssl && enabled {
             info!("Starting HTTP server on: {}", bind_addr);
@@ -132,10 +145,16 @@ fn start_http_tracker_server(config: &HttpTrackerConfig, tracker: Arc<TorrentTra
     })
 }
 
-async fn start_udp_tracker_server(config: &UdpTrackerConfig, tracker: Arc<TorrentTracker>, rx: tokio::sync::watch::Receiver<bool>) -> JoinHandle<()> {
-    let udp_server = UdpServer::new(tracker, &config.bind_address).await.unwrap_or_else(|e| {
-        panic!("Could not start UDP server: {}", e);
-    });
+async fn start_udp_tracker_server(
+    config: &UdpTrackerConfig,
+    tracker: Arc<TorrentTracker>,
+    rx: tokio::sync::watch::Receiver<bool>,
+) -> JoinHandle<()> {
+    let udp_server = UdpServer::new(tracker, &config.bind_address)
+        .await
+        .unwrap_or_else(|e| {
+            panic!("Could not start UDP server: {}", e);
+        });
 
     info!("Starting UDP server on: {}", config.bind_address);
     tokio::spawn(async move {
